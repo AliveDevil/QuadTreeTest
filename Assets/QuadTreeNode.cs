@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 public class QuadTreeNode
 {
@@ -33,25 +34,9 @@ public class QuadTreeNode
         return node.AAR.Contains(v);
     }
 
-    public bool CanMerge()
-    {
-        return false;
-        //for (int i = 0; i < Children.Length; i++)
-        //{
-        //    if (!Children[i].Empty()) return false;
-        //    if (!Children[i].MeshObject.Empty()) return false;
-        //}
-        //return true;
-    }
-
     public bool CanSplit()
     {
-        return Empty() && SideLength > MinSize;
-    }
-
-    public bool Empty()
-    {
-        return Children == null || Children.Length == 0;
+        return Children == null && SideLength > MinSize && GetDepth(MeshObject) > 3;
     }
 
     public Corner FindCorner(Vector2 v)
@@ -76,6 +61,76 @@ public class QuadTreeNode
         EnableRenderer();
     }
 
+    public bool ShouldMerge()
+    {
+        if (Children == null) return false;
+
+        bool anyNonEmpty = false;
+        for (int i = 0; i < Children.Length; i++)
+        {
+            if (!Children[i].Active)
+            {
+                anyNonEmpty = true;
+            }
+            else if (!Children[i].MeshObject.Empty())
+            {
+                anyNonEmpty = true;
+            }
+        }
+
+        return !anyNonEmpty;
+        //if (Children == null) return false;
+
+        //if (Active)
+        //    if (MeshObject.Empty()) return true;
+
+        //bool allEmpty = true;
+        //bool anyNonEmpty = false;
+        //for (int i = 0; i < Children.Length; i++)
+        //{
+        //    if (Children[i] == null) continue;
+        //    allEmpty = false;
+        //    if ((Children[i].Active || Children[i].Children != null) || (MeshObject.Active || MeshObject.CornerActive))
+        //        anyNonEmpty = true;
+        //}
+        //return !(anyNonEmpty || allEmpty);
+    }
+
+    public void SetChildren(QuadTreeNode nodeBottomLeft, QuadTreeNode nodeTopLeft, QuadTreeNode nodeTopRight, QuadTreeNode nodeBottomRight)
+    {
+        Active = false;
+        float halfSideLength = SideLength / 2;
+        Children = new QuadTreeNode[4];
+        Children[0] = nodeBottomLeft ?? CreateNode(Position + new Vector2(-halfSideLength, -halfSideLength), halfSideLength);
+        Children[1] = nodeTopLeft ?? CreateNode(Position + new Vector2(-halfSideLength, halfSideLength), halfSideLength);
+        Children[2] = nodeTopRight ?? CreateNode(Position + new Vector2(halfSideLength, halfSideLength), halfSideLength);
+        Children[3] = nodeBottomRight ?? CreateNode(Position + new Vector2(halfSideLength, -halfSideLength), halfSideLength);
+
+        MeshObject.SetChildren(Children[0].MeshObject, Children[1].MeshObject, Children[2].MeshObject, Children[3].MeshObject);
+
+        DisableRenderer();
+
+        ApplyValues();
+    }
+
+    public void ApplyValues()
+    {
+        ApplyValuesInternal();
+        MeshObject.ApplyValues();
+    }
+
+    private void ApplyValuesInternal()
+    {
+        if (Children == null) return;
+
+        for (int i = 0; i < Children.Length; i++)
+        {
+            Children[i].Depth = Depth + 1;
+            Children[i].Parent = this;
+            Children[i].ApplyValues();
+        }
+    }
+
     public void Split()
     {
         Active = false;
@@ -91,14 +146,13 @@ public class QuadTreeNode
         Children[2].UseLODMesh(MeshObject.Children[2]);
         Children[3].UseLODMesh(MeshObject.Children[3]);
 
-        MeshObject.Active = false;
-
         DisableRenderer();
     }
 
     public void Update()
     {
         UpdateChildren();
+        MeshObject.Update();
     }
 
     public void UseLODMesh(LODMeshObject lodMesh)
@@ -113,6 +167,7 @@ public class QuadTreeNode
         QuadNodeObject.transform.position = Position.X0Z();
         QuadNodeObject.GetComponent<QuadTreeNodeBehaviour>().Node = this;
         QuadNodeObject.GetComponent<QuadTreeMergeBehaviour>().Node = this;
+        QuadNodeObject.GetComponent<QuadTreeSplitBehaviour>().Node = this;
         QuadNodeObject.GetComponent<LODMeshRenderer>().MeshObject = MeshObject;
     }
 
@@ -121,7 +176,7 @@ public class QuadTreeNode
         return new QuadTreeNode(QuadTree, this, position, size, MinSize, Depth + 1);
     }
 
-    private void DestroyGameObject()
+    public void DestroyGameObject()
     {
         QuadTree.Pool.Put(ref QuadNodeObject);
     }
@@ -136,6 +191,17 @@ public class QuadTreeNode
     {
         QuadNodeObject.GetComponent<LODMeshRenderer>().enabled = true;
         QuadNodeObject.GetComponent<QuadTreeNodeBehaviour>().enabled = true;
+    }
+
+    private int GetDepth(LODMeshObject meshObject)
+    {
+        int depth = meshObject.Depth;
+        for (int i = 0; i < meshObject.Children.Length; i++)
+        {
+            if (meshObject.Children[i] == null) continue;
+            depth = Mathf.Max(depth, GetDepth(meshObject.Children[i]));
+        }
+        return depth;
     }
 
     private void UpdateChildren()

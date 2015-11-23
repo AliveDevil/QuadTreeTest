@@ -27,6 +27,13 @@ public struct AxisAlignedRectangle
         this.size = size;
     }
 
+    public bool Inner(Vector2 v)
+    {
+        return
+            Mathf.Abs(v.x - Position.x) < Size.x / 2 &&
+            Mathf.Abs(v.y - Position.y) < Size.y / 2;
+    }
+
     public bool Contains(Vector2 v)
     {
         return

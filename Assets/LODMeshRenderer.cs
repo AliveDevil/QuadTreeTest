@@ -44,10 +44,6 @@ public class LODMeshRenderer : MonoBehaviour
 
     private void Update()
     {
-        MeshObject.Update();
-        //MeshObject.StoreOldValuesSync();
-        //MeshObject.LoDSync();
-        //MeshObject.ActivateSync();
         if (MeshObject != null && MeshObject.Invalid)
         {
             triangleMesh.Clear();

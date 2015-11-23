@@ -14,7 +14,7 @@ public class LODMeshObject
     public bool Invalid;
     public bool LastActive;
     public bool LastCornerActive;
-    public int LoD;
+    public float LoD;
     public Mesh Mesh;
     public LODMeshObject Parent;
     public QuadTreeNode QuadNode;
@@ -47,6 +47,15 @@ public class LODMeshObject
 
         Corner[6] = FindOrCreateCorner(Bounds.Position + new Vector2(halfSize.x, -halfSize.y), Parent == null); // bottom right
         Corner[7] = FindOrCreateCorner(Bounds.Position + new Vector2(0, -halfSize.y), true); // bottom
+    }
+
+    public bool Empty()
+    {
+        for (int i = 0; i < Children.Length; i++)
+        {
+            if (Children[i] != null) return false;
+        }
+        return true;
     }
 
     public Corner FindCorner(Vector2 v)
@@ -93,6 +102,8 @@ public class LODMeshObject
         Children[1] = northWest;
         Children[2] = southEast;
         Children[3] = northEast;
+
+        ApplyValues();
     }
 
     public void Triangulate(TriangleMesh mesh, Vector2 reference)
@@ -134,7 +145,7 @@ public class LODMeshObject
         corner.References++;
     }
 
-    private void ApplyValues()
+    public void ApplyValues()
     {
         for (int i = 0; i < Children.Length; i++)
         {
@@ -159,22 +170,16 @@ public class LODMeshObject
 
     private void DestroyChildren()
     {
-        RemoveReferences();
-
         for (int i = 0; i < 4; i++)
         {
+            if (Children[i] != null) Children[i].RemoveReferences();
             Children[i] = null;
         }
     }
 
-    private bool Empty()
+    private void EnabledChanged(object sender, EventArgs e)
     {
-        for (int i = 0; i < Children.Length; i++)
-        {
-            if (Children[i] == null) continue;
-            if (!Children[i].Empty()) return false;
-        }
-        return true;
+        Invalidate();
     }
 
     private void Evaluate(TriangleMesh triangleMesh, Corner start, Corner mid, Corner end, bool startEnabled, bool midEnabled, bool endEnabled, Vector2 reference)
@@ -223,19 +228,18 @@ public class LODMeshObject
         return corner;
     }
 
-    private void Merge()
+    private void HeightChanged(object sender, EventArgs e)
     {
         Invalidate();
-        Center.HeightChanged += HeightChanged;
-        Center.EnabledChanged += EnabledChanged;
-        //Center.ReferencesChanged += ReferencesChanged;
-        for (int i = 0; i < Corner.Length; i++)
+    }
+
+    private void Merge()
+    {
+        for (int i = 0; i < Children.Length; i++)
         {
-            Corner[i].HeightChanged += HeightChanged;
-            Corner[i].EnabledChanged += EnabledChanged;
-            //Corner[i].ReferencesChanged += ReferencesChanged;
+            if (Children[i] != null)
+                Children[i].DestroyChildren();
         }
-        RemoveReferences();
     }
 
     private void RemoveReferenceIfContained(Corner corner, ref bool b)
@@ -247,45 +251,35 @@ public class LODMeshObject
 
     private void RemoveReferences()
     {
+        RemoveReferenceIfContained(Center, ref CornerReference[0]);
         for (int i = 0; i < Children.Length; i++)
         {
             RemoveReferenceIfContained(Corner[i * 2], ref CornerReference[i + 1]);
         }
-        RemoveReferenceIfContained(Center, ref CornerReference[0]);
 
+        DestroyChildren();
+    }
+
+    private bool ShouldMerge()
+    {
+        bool anyNonEmpty = false;
         for (int i = 0; i < Children.Length; i++)
         {
             if (Children[i] == null) continue;
-            Children[i].DestroyChildren();
+            if (!Children[i].Empty() || (Children[i].Active || Children[i].CornerActive))
+                anyNonEmpty = true;
         }
+        return !anyNonEmpty;
     }
 
     private void Split()
     {
         Invalidate();
-        Center.HeightChanged += HeightChanged;
-        Center.EnabledChanged += EnabledChanged;
-        //Center.ReferencesChanged += ReferencesChanged;
-        for (int i = 0; i < Corner.Length; i++)
-        {
-            Corner[i].HeightChanged += HeightChanged;
-            Corner[i].EnabledChanged += EnabledChanged;
-            //Corner[i].ReferencesChanged += ReferencesChanged;
-        }
         for (int i = 0; i < Children.Length; i++)
         {
+            if (Children[i] != null) continue;
             Children[i] = new LODMeshObject(this, QuadNode, Bounds.Split((Quadrant)i), Depth + 1);
         }
-    }
-
-    private void EnabledChanged(object sender, EventArgs e)
-    {
-        Invalidate();
-    }
-
-    private void HeightChanged(object sender, EventArgs e)
-    {
-        Invalidate();
     }
 
     private void StoreOldValues()
@@ -333,7 +327,7 @@ public class LODMeshObject
 
     private void UpdateSplit()
     {
-        if (Depth <= LoD)
+        if (1 / ((Bounds.Size.x + Bounds.Size.y) / 8) <= LoD)
         {
             Active = Parent == null || (Parent.Active || Parent.CornerActive);
             CornerActive = false;
@@ -361,107 +355,20 @@ public class LODMeshObject
 
         if (Active || CornerActive)
         {
+            if (ShouldMerge())
+            {
+                Merge();
+            }
+
             if (!(LastActive || LastCornerActive))
             {
                 Invalidate();
                 Split();
             }
         }
-        else
+        else if (LastActive || LastCornerActive)
         {
-            if (LastActive || LastCornerActive)
-            {
-                Invalidate();
-                Merge();
-            }
+            RemoveReferences();
         }
-
-        //if (Active || CornerActive)
-        //{
-        //    EvaluateReferences();
-
-        //    if (!(LastActive || LastCornerActive))
-        //    {
-        //        OnInvalidate();
-        //        Center.HeightChanged += HeightChanged;
-        //        Center.EnabledChanged += EnabledChanged;
-        //        //Center.ReferencesChanged += ReferencesChanged;
-        //        for (int i = 0; i < Corner.Length; i++)
-        //        {
-        //            Corner[i].HeightChanged += HeightChanged;
-        //            Corner[i].EnabledChanged += EnabledChanged;
-        //            //Corner[i].ReferencesChanged += ReferencesChanged;
-        //        }
-
-        //        for (int i = 0; i < 4; i++)
-        //        {
-        //            Children[i] = new ChunkTree(Terrain, Chunk, this, (Center.Position + Corner[i * 2].Position) / 2, EdgeLength / 2, Depth + 1);
-        //        }
-        //    }
-        //}
-        //else
-        //{
-        //    if (LastActive || LastCornerActive)
-        //    {
-        //        OnInvalidate();
-        //        RemoveReferences();
-        //    }
-        //}
-
-        //for (int i = 0; i < Children.Length; i++)
-        //{
-        //    if (Children[i] == null) continue;
-        //    Children[i].UpdateSplit();
-        //}
-
-        //if (TotalDepth <= LoD)
-        //{
-        //    if (!(Active || CornerActive))
-        //    {
-        //        Split();
-        //    }
-        //}
-        //else
-        //{
-        //    /*(
-        //                Corner[1].Enabled || Corner[3].Enabled || Corner[5].Enabled || Corner[7].Enabled
-        //            ) ||
-        //            (
-        //                Children[0] != null && (Children[0].Active || Children[0].CornerActive) ||
-        //                Children[1] != null && (Children[1].Active || Children[1].CornerActive) ||
-        //                Children[2] != null && (Children[2].Active || Children[2].CornerActive) ||
-        //                Children[3] != null && (Children[3].Active || Children[3].CornerActive)
-        //            );*/
-        //    if (
-        //        (
-        //            Corner[1].Enabled || Corner[3].Enabled || Corner[5].Enabled || Corner[7].Enabled
-        //        ) || (
-        //            Children[0] != null && (Children[0].Active || Children[0].CornerActive) ||
-        //            Children[1] != null && (Children[1].Active || Children[1].CornerActive) ||
-        //            Children[2] != null && (Children[2].Active || Children[2].CornerActive) ||
-        //            Children[3] != null && (Children[3].Active || Children[3].CornerActive)
-        //        ))
-        //    {
-        //        if (!(Active || CornerActive))
-        //        {
-        //            Split();
-        //        }
-        //    }
-        //    else if (!Active && CornerCount() > 2)
-        //    {
-        //        Split();
-        //        CornerActive = true;
-        //        Active = false;
-        //    }
-        //    else
-        //    {
-        //        if (Active || CornerActive)
-        //        {
-        //            Active = false;
-        //            CornerActive = false;
-        //            Merge();
-        //        }
-        //    }
-        //}
     }
 }

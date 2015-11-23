@@ -27,11 +27,33 @@ public class QuadTree : MonoBehaviour
         return null;
     }
 
-    public void Start()
+    public void Grow(Vector2 direction)
     {
-        Noise = new SimplexNoise();
-        Noise.Initialize();
-        Root = new QuadTreeNode(this, null, Vector2.zero, Helper.ViewDistance, 4, 0);
+        QuadTreeNode tempRoot = null;
+        if (direction == new Vector2(1, 1))
+        {
+            tempRoot = new QuadTreeNode(this, null, Root.AAR.Position + new Vector2(Root.AAR.Size.x / 2, Root.AAR.Size.y / 2), (Root.AAR.Size.x + Root.AAR.Size.y) / 2, Root.MinSize, 0);
+            tempRoot.MeshObject.Children[0] = Root.MeshObject;
+        }
+        if (direction == new Vector2(-1, -1))
+        {
+            tempRoot = new QuadTreeNode(this, null, Root.AAR.Position + new Vector2(-Root.AAR.Size.x / 2, -Root.AAR.Size.y / 2), (Root.AAR.Size.x + Root.AAR.Size.y) / 2, Root.MinSize, 0);
+            tempRoot.MeshObject.Children[2] = Root.MeshObject;
+        }
+        if (direction == new Vector2(1, -1))
+        {
+            tempRoot = new QuadTreeNode(this, null, Root.AAR.Position + new Vector2(Root.AAR.Size.x / 2, -Root.AAR.Size.y / 2), (Root.AAR.Size.x + Root.AAR.Size.y) / 2, Root.MinSize, 0);
+            tempRoot.MeshObject.Children[1] = Root.MeshObject;
+        }
+        if (direction == new Vector2(-1, 1))
+        {
+            tempRoot = new QuadTreeNode(this, null, Root.AAR.Position + new Vector2(-Root.AAR.Size.x / 2, Root.AAR.Size.y / 2), (Root.AAR.Size.x + Root.AAR.Size.y) / 2, Root.MinSize, 0);
+            tempRoot.MeshObject.Children[3] = Root.MeshObject;
+        }
+
+        Root.DestroyGameObject();
+        Root = tempRoot;
+        Root.ApplyValues();
     }
 
     public float Sample(Vector2 v)
@@ -50,8 +72,19 @@ public class QuadTree : MonoBehaviour
         return result;
     }
 
+    public void Start()
+    {
+        Noise = new SimplexNoise();
+        Noise.Initialize();
+        Root = new QuadTreeNode(this, null, Vector2.zero, Helper.ViewDistance, 4, 0);
+    }
+
     public void Update()
     {
+        if (!Root.AAR.Inner((LODReference.Position / (Helper.ViewDistance)).Round() * Helper.ViewDistance))
+        {
+            Grow((LODReference.Position - Root.Position).One());
+        }
         //Root.Update();
     }
 }

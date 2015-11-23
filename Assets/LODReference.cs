@@ -5,11 +5,11 @@ public class LODReference : MonoBehaviour
     public Vector2 Position;
     public AnimationCurve LoDCurve;
 
-    public int LoD(AxisAlignedRectangle bounds)
+    public float LoD(AxisAlignedRectangle bounds)
     {
-        if (bounds.Contains(Position)) return Helper.LevelsOfDetail;
+        if (bounds.Contains(Position)) return 1;
         float distance = bounds.Distance(Position);
-        return (int)(LoDCurve.Evaluate(distance / Helper.ViewDistance) * Helper.LevelsOfDetail);
+        return (LoDCurve.Evaluate(distance / Helper.ViewDistance));
         //return Mathf.FloorToInt(Mathf.Clamp01(1 - (distance / Helper.ViewDistance) + 0.01f) * 15);
     }
 

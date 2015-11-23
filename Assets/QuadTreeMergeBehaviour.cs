@@ -6,9 +6,9 @@ public class QuadTreeMergeBehaviour : MonoBehaviour
 
     private void Update()
     {
-        if (!Node.Active && !Node.Empty() && Node.CanMerge())
+        if (Node.ShouldMerge())
         {
-            Node.Merge();
+            //Node.Merge();
         }
     }
 }
